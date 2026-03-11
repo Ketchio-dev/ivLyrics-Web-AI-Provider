@@ -5,7 +5,7 @@
       "type": "ai",
       "version": "0.2.0",
       "updated": "2026-03-11",
-      "description": "Experimental local bridge addon that automates ChatGPT and Gemini web sessions for ivLyrics",
+      "description": "Experimental addon for ChatGPT/Gemini web sessions. Marketplace install downloads the addon only; local bridge setup is still required.",
       "githubUrl": "https://github.com/Ketchio-dev/ivLyrics-Web-AI-Provider",
       "downloadUrl": "https://raw.githubusercontent.com/Ketchio-dev/ivLyrics-Web-AI-Provider/main/Addon_AI_FreeAIprovider.js",
       "minAppVersion": "4.0.0"

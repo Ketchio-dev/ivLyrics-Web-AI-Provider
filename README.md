@@ -69,9 +69,48 @@ npm run stop:bg
 6. Sign in.
 7. Click `Save Session`.
 
+## Marketplace Install
+
+Marketplace install is not enough by itself.
+
+What the ivLyrics marketplace does:
+
+- Downloads `Addon_AI_FreeAIprovider.js`
+- Saves the addon code locally
+- Loads the addon immediately
+
+What it does not do:
+
+- Install `freeai-bridge`
+- Install Playwright or Chromium
+- Start the local bridge server
+- Create browser login sessions for ChatGPT or Gemini
+
+So after pressing the marketplace download button, you still need to:
+
+1. Install `freeai-bridge`
+2. Start the bridge
+3. Log in through `Open Login Window`
+4. Save the session
+
+If the bridge is missing, the addon will appear in ivLyrics but it will not be usable yet.
+
 ## Marketplace Manifest
 
 This repo exposes a standalone `manifest.json` for marketplace-style addon listing.
+
+## Suggested Release Title
+
+`Web AI Provider (ChatGPT + Gemini) v0.2.0`
+
+## Suggested Release Summary
+
+Experimental ivLyrics addon that reuses ChatGPT Web and Gemini Web sessions through a local Playwright bridge.
+
+- Separate repository from the CLI provider project
+- Supports translation and smart phonetic output
+- Background bridge mode with popup/blocker guards
+- Marketplace install downloads the addon only; bridge setup is still required
 
 ## License
 
