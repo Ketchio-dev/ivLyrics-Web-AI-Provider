@@ -30,7 +30,7 @@ if ($Help) {
     exit 0
 }
 
-if (-not ($Full -or $Addon -or $Bridge)) {
+if (-not ($Full -or $Addon -or $Bridge -or $StartBridge)) {
     $Full = $true
 }
 if ($Full) {
@@ -139,6 +139,9 @@ if ($Bridge) {
 }
 
 if ($StartBridge) {
+    if (-not (Test-Path -LiteralPath (Join-Path $BridgeDir "package.json"))) {
+        throw "Bridge is not installed yet at $BridgeDir. Run with -Bridge first."
+    }
     Push-Location $BridgeDir
     try {
         npm run start:bg

@@ -41,7 +41,7 @@ while [ $# -gt 0 ]; do
     shift
 done
 
-if [ "$INSTALL_ADDON" -eq 0 ] && [ "$INSTALL_BRIDGE" -eq 0 ]; then
+if [ "$INSTALL_ADDON" -eq 0 ] && [ "$INSTALL_BRIDGE" -eq 0 ] && [ "$START_BRIDGE" -eq 0 ]; then
     INSTALL_ADDON=1
     INSTALL_BRIDGE=1
 fi
@@ -154,6 +154,11 @@ fi
 
 if [ "$START_BRIDGE" -eq 1 ]; then
     require_cmd npm
+    if [ ! -f "$BRIDGE_DIR/package.json" ]; then
+        err "Bridge is not installed yet at $BRIDGE_DIR"
+        err "Run with --bridge first."
+        exit 1
+    fi
     info "Starting bridge in background"
     (
         cd "$BRIDGE_DIR"

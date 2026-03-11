@@ -56,6 +56,12 @@ Background:
 curl -fsSL https://raw.githubusercontent.com/Ketchio-dev/ivLyrics-Web-AI-Provider/main/install.sh | bash -s -- --bridge --start-bridge --no-apply
 ```
 
+Restart after install:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Ketchio-dev/ivLyrics-Web-AI-Provider/main/install.sh | bash -s -- --start-bridge --no-apply
+```
+
 Stop:
 
 ```bash
@@ -68,6 +74,13 @@ Windows start:
 ```powershell
 $u = "https://raw.githubusercontent.com/Ketchio-dev/ivLyrics-Web-AI-Provider/main/install.ps1"
 & ([ScriptBlock]::Create((Invoke-WebRequest -UseBasicParsing $u).Content)) -Bridge -StartBridge -NoApply
+```
+
+Windows restart after install:
+
+```powershell
+$u = "https://raw.githubusercontent.com/Ketchio-dev/ivLyrics-Web-AI-Provider/main/install.ps1"
+& ([ScriptBlock]::Create((Invoke-WebRequest -UseBasicParsing $u).Content)) -StartBridge -NoApply
 ```
 
 Windows stop:

@@ -202,8 +202,8 @@ ${text}`;
                     ? '$u = "https://raw.githubusercontent.com/Ketchio-dev/ivLyrics-Web-AI-Provider/main/install.ps1"; & ([ScriptBlock]::Create((Invoke-WebRequest -UseBasicParsing $u).Content)) -Bridge -StartBridge -NoApply'
                     : 'curl -fsSL https://raw.githubusercontent.com/Ketchio-dev/ivLyrics-Web-AI-Provider/main/install.sh | bash -s -- --bridge --start-bridge --no-apply';
                 const startCommand = isWindows
-                    ? '$u = "https://raw.githubusercontent.com/Ketchio-dev/ivLyrics-Web-AI-Provider/main/install.ps1"; & ([ScriptBlock]::Create((Invoke-WebRequest -UseBasicParsing $u).Content)) -Bridge -StartBridge -NoApply'
-                    : 'curl -fsSL https://raw.githubusercontent.com/Ketchio-dev/ivLyrics-Web-AI-Provider/main/install.sh | bash -s -- --bridge --start-bridge --no-apply';
+                    ? '$u = "https://raw.githubusercontent.com/Ketchio-dev/ivLyrics-Web-AI-Provider/main/install.ps1"; & ([ScriptBlock]::Create((Invoke-WebRequest -UseBasicParsing $u).Content)) -StartBridge -NoApply'
+                    : 'curl -fsSL https://raw.githubusercontent.com/Ketchio-dev/ivLyrics-Web-AI-Provider/main/install.sh | bash -s -- --start-bridge --no-apply';
                 const [bridgeUrl, setBridgeUrl] = useState(getBridgeUrl());
                 const [provider, setProvider] = useState(getSelectedProvider());
                 const [availableProviders, setAvailableProviders] = useState(PROVIDER_FALLBACKS);
@@ -351,7 +351,7 @@ ${text}`;
                         }
                     },
                         React.createElement('strong', null, bi('Before use:', '사용 전에 확인:')),
-                        React.createElement('div', { style: { marginTop: '6px' } }, bi('1. Install freeai-bridge with this command:', '1. 아래 명령으로 freeai-bridge를 설치하세요:')),
+                        React.createElement('div', { style: { marginTop: '6px' } }, bi('1. Install and start freeai-bridge with this command:', '1. 아래 명령으로 freeai-bridge를 설치하고 실행하세요:')),
                         React.createElement('div', {
                             style: { display: 'flex', alignItems: 'center', gap: '8px', marginTop: '6px', flexWrap: 'wrap' }
                         },
@@ -361,7 +361,7 @@ ${text}`;
                                 onClick: () => handleCopy(setupCommand)
                             }, bi('Copy', '복사'))
                         ),
-                        React.createElement('div', { style: { marginTop: '8px' } }, bi('2. Start the bridge with this command:', '2. 아래 명령으로 브리지를 실행하세요:')),
+                        React.createElement('div', { style: { marginTop: '8px' } }, bi('2. If it is already installed, restart the bridge with this command:', '2. 이미 설치되어 있다면 아래 명령으로 브리지를 다시 실행하세요:')),
                         React.createElement('div', {
                             style: { display: 'flex', alignItems: 'center', gap: '8px', marginTop: '6px', flexWrap: 'wrap' }
                         },
