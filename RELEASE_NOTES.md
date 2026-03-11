@@ -11,4 +11,5 @@ Important:
 - This addon is experimental
 - Marketplace install downloads only the addon JS file
 - You still need to install and run `freeai-bridge`
+- Raw install scripts are included for users without git
 - You must log in and save a browser session for ChatGPT or Gemini before use

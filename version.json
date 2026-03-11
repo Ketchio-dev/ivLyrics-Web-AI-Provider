@@ -4,7 +4,9 @@
     "Addon_AI_FreeAIprovider.js": { "version": "0.2.0", "id": "freeaiprovider" }
   },
   "integrity": {
-    "Addon_AI_FreeAIprovider.js": "sha256-975ce86ed46215f99fcd6b12188804bd25596443f3d48865aabd2059625deed4",
+    "Addon_AI_FreeAIprovider.js": "sha256-2a9a313b2bf298caec6e9b39da883ba89f6690fd967f2f378dfc73ab1a4338ba",
+    "install.sh": "sha256-4d9de7412f59e3bdc242ba3786a83962704c65153cae290708af9e7c4311db4b",
+    "install.ps1": "sha256-452829bf676794a3123ac0e4bddba64b18454af3ded68e1e3eb18379d0b29847",
     "freeai-bridge/server.js": "sha256-5426077caea1dc6f7814e2c141d900d7fb2c6e68f289171bd52e1089155376e6",
     "freeai-bridge/start-background.js": "sha256-3f19bfaf3e37a22c416fec406a83d3aa474334d3ee33da4e93b8d85bf98100d8",
     "freeai-bridge/stop-background.js": "sha256-54cc235d897649ebd65846c9bdc28e98c7e48f3c1798630a37c44858b87724f4",
@@ -12,8 +14,9 @@
     "freeai-bridge/package-lock.json": "sha256-aa3d7fd7d0bbebc88972187f8960c10fcf77fda339604680ce6bdec78002dd30",
     "freeai-bridge/README.md": "sha256-54a4c2981656bbb69a528137e8d00429c9bca6b319b5cf46fec973df77e4dcbb",
     "freeai-bridge/providers.example.json": "sha256-4f343830d9b01d34a0ab8dded11c03636459d929fd3d8e689bddc2288bab91a0",
-    "manifest.json": "sha256-d3c64ef777f67668ffe53887003ec4067a2d40afa2db062031f02994cf5901d0",
-    "README.md": "sha256-9c65a2e68c4e1d8a114c1859ab4be7685f1e2f9aaa38e7fcfd96588062c09908",
-    "LICENSE": "sha256-20c17d8b8c48a600800dfd14f95d5cb9ff47066a9641ddeab48dc54aec96e331"
+    "manifest.json": "sha256-5979725758a2fa7527534e107ba6408fa5537663889114367d47164c543fd675",
+    "README.md": "sha256-282be24be41af7cada6f6e320daab36b19d59843e3625c9f7cfc0c8dd766fed1",
+    "LICENSE": "sha256-20c17d8b8c48a600800dfd14f95d5cb9ff47066a9641ddeab48dc54aec96e331",
+    "RELEASE_NOTES.md": "sha256-177a5370486ccaa5c85d4b2cbf11292346e465dd5d870fcc6a10dbc41fe02099"
   }
 }

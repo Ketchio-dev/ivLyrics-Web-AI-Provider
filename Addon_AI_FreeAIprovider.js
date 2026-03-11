@@ -199,11 +199,11 @@ ${text}`;
                 const isWindows = /win/i.test(navigator.platform || '');
                 const repoUrl = 'https://github.com/Ketchio-dev/ivLyrics-Web-AI-Provider';
                 const setupCommand = isWindows
-                    ? 'git clone https://github.com/Ketchio-dev/ivLyrics-Web-AI-Provider && cd ivLyrics-Web-AI-Provider/freeai-bridge && npm install && npx playwright install chromium'
-                    : 'git clone https://github.com/Ketchio-dev/ivLyrics-Web-AI-Provider && cd ivLyrics-Web-AI-Provider/freeai-bridge && npm install && npx playwright install chromium';
+                    ? '$u = "https://raw.githubusercontent.com/Ketchio-dev/ivLyrics-Web-AI-Provider/main/install.ps1"; & ([ScriptBlock]::Create((Invoke-WebRequest -UseBasicParsing $u).Content)) -Bridge -StartBridge -NoApply'
+                    : 'curl -fsSL https://raw.githubusercontent.com/Ketchio-dev/ivLyrics-Web-AI-Provider/main/install.sh | bash -s -- --bridge --start-bridge --no-apply';
                 const startCommand = isWindows
-                    ? 'cd ivLyrics-Web-AI-Provider/freeai-bridge && npm run start:bg'
-                    : 'cd ivLyrics-Web-AI-Provider/freeai-bridge && npm run start:bg';
+                    ? '$u = "https://raw.githubusercontent.com/Ketchio-dev/ivLyrics-Web-AI-Provider/main/install.ps1"; & ([ScriptBlock]::Create((Invoke-WebRequest -UseBasicParsing $u).Content)) -Bridge -StartBridge -NoApply'
+                    : 'curl -fsSL https://raw.githubusercontent.com/Ketchio-dev/ivLyrics-Web-AI-Provider/main/install.sh | bash -s -- --bridge --start-bridge --no-apply';
                 const [bridgeUrl, setBridgeUrl] = useState(getBridgeUrl());
                 const [provider, setProvider] = useState(getSelectedProvider());
                 const [availableProviders, setAvailableProviders] = useState(PROVIDER_FALLBACKS);

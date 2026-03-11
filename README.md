@@ -31,9 +31,14 @@ without API keys.
 ## Install Bridge
 
 ```bash
-cd freeai-bridge
-npm install
-npx playwright install chromium
+curl -fsSL https://raw.githubusercontent.com/Ketchio-dev/ivLyrics-Web-AI-Provider/main/install.sh | bash -s -- --bridge
+```
+
+Windows PowerShell:
+
+```powershell
+$u = "https://raw.githubusercontent.com/Ketchio-dev/ivLyrics-Web-AI-Provider/main/install.ps1"
+& ([ScriptBlock]::Create((Invoke-WebRequest -UseBasicParsing $u).Content)) -Bridge
 ```
 
 ## Run Bridge
@@ -48,14 +53,27 @@ npm start
 Background:
 
 ```bash
-cd freeai-bridge
-npm run start:bg
+curl -fsSL https://raw.githubusercontent.com/Ketchio-dev/ivLyrics-Web-AI-Provider/main/install.sh | bash -s -- --bridge --start-bridge --no-apply
 ```
 
 Stop:
 
 ```bash
-cd freeai-bridge
+cd ~/.config/spicetify/freeai-bridge
+npm run stop:bg
+```
+
+Windows start:
+
+```powershell
+$u = "https://raw.githubusercontent.com/Ketchio-dev/ivLyrics-Web-AI-Provider/main/install.ps1"
+& ([ScriptBlock]::Create((Invoke-WebRequest -UseBasicParsing $u).Content)) -Bridge -StartBridge -NoApply
+```
+
+Windows stop:
+
+```powershell
+cd "$env:LOCALAPPDATA\spicetify\freeai-bridge"
 npm run stop:bg
 ```
 
