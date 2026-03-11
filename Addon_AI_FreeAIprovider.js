@@ -98,6 +98,10 @@
         return String(getSetting('provider', 'chatgpt') || 'chatgpt').trim().toLowerCase();
     }
 
+    function getUseTemporaryChat() {
+        return !!getSetting('temporary-chat', true);
+    }
+
     function ensureProviderEnabledByDefault() {
         const manager = window.AIAddonManager;
         const storage = Spicetify?.LocalStorage;
@@ -204,7 +208,8 @@ ${text}`;
 
     async function generate(prompt, taskType = 'translation') {
         const provider = getSelectedProvider();
-        const data = await requestBridge('/generate', { provider, prompt, taskType });
+        const useTemporaryChat = getUseTemporaryChat();
+        const data = await requestBridge('/generate', { provider, prompt, taskType, useTemporaryChat });
         if (!data.text) {
             throw new Error('Empty response from bridge');
         }
@@ -233,6 +238,7 @@ ${text}`;
                     : 'curl -fsSL https://raw.githubusercontent.com/Ketchio-dev/ivLyrics-Web-AI-Provider/main/install.sh | bash -s -- --start-bridge --no-apply';
                 const [bridgeUrl, setBridgeUrl] = useState(getBridgeUrl());
                 const [provider, setProvider] = useState(getSelectedProvider());
+                const [temporaryChatEnabled, setTemporaryChatEnabled] = useState(getUseTemporaryChat());
                 const [availableProviders, setAvailableProviders] = useState(PROVIDER_FALLBACKS);
                 const [status, setStatus] = useState(bi('Checking local bridge...', '로컬 브리지 확인 중...'));
                 const [authStatus, setAuthStatus] = useState('');
@@ -260,10 +266,13 @@ ${text}`;
                             const blockedSuffix = providerState.blockedBy
                                 ? bi(` / Blocked: ${providerState.blockedBy}`, ` / 차단 상태: ${providerState.blockedBy}`)
                                 : '';
+                            const temporarySuffix = temporaryChatEnabled
+                                ? bi(' / Temporary chat: on', ' / 임시 채팅: 켜짐')
+                                : bi(' / Temporary chat: off', ' / 임시 채팅: 꺼짐');
                             setStatus(
                                 bi(
-                                    `Running. Session saved: ${providerState.hasSavedSession ? 'yes' : 'no'} / Login window: ${providerState.authWindowOpen ? 'open' : 'closed'} / Recovery window: ${providerState.recoveryWindowOpen ? 'open' : 'closed'} / Mode: ${runtimeMode}${blockedSuffix}`,
-                                    `실행 중. 세션 저장: ${providerState.hasSavedSession ? '예' : '아니오'} / 로그인 창: ${providerState.authWindowOpen ? '열림' : '닫힘'} / 복구 창: ${providerState.recoveryWindowOpen ? '열림' : '닫힘'} / 모드: ${runtimeMode}${blockedSuffix}`
+                                    `Running. Session saved: ${providerState.hasSavedSession ? 'yes' : 'no'} / Login window: ${providerState.authWindowOpen ? 'open' : 'closed'} / Recovery window: ${providerState.recoveryWindowOpen ? 'open' : 'closed'} / Mode: ${runtimeMode}${temporarySuffix}${blockedSuffix}`,
+                                    `실행 중. 세션 저장: ${providerState.hasSavedSession ? '예' : '아니오'} / 로그인 창: ${providerState.authWindowOpen ? '열림' : '닫힘'} / 복구 창: ${providerState.recoveryWindowOpen ? '열림' : '닫힘'} / 모드: ${runtimeMode}${temporarySuffix}${blockedSuffix}`
                                 )
                             );
                         } else {
@@ -277,7 +286,7 @@ ${text}`;
                             )
                         );
                     }
-                }, [bridgeUrl, provider]);
+                }, [bridgeUrl, provider, temporaryChatEnabled]);
 
                 useEffect(() => {
                     refreshProviders();
@@ -294,6 +303,13 @@ ${text}`;
                     const value = event.target.value;
                     setProvider(value);
                     setSetting('provider', value);
+                };
+
+                const handleTemporaryChatChange = (event) => {
+                    const value = !!event.target.checked;
+                    setTemporaryChatEnabled(value);
+                    setSetting('temporary-chat', value);
+                    refreshHealth().catch(() => {});
                 };
 
                 const handleOpenLogin = async () => {
@@ -458,6 +474,19 @@ ${text}`;
                             }, loadingProviders ? '...' : bi('Refresh', '새로고침'))
                         ),
                         React.createElement('small', null, status)
+                    ),
+                    React.createElement('div', { className: 'ai-addon-setting' },
+                        React.createElement('label', {
+                            style: { display: 'flex', alignItems: 'center', gap: '8px' }
+                        },
+                            React.createElement('input', {
+                                type: 'checkbox',
+                                checked: temporaryChatEnabled,
+                                onChange: handleTemporaryChatChange,
+                            }),
+                            bi('Use experimental temporary chat', '실험적 임시 채팅 사용')
+                        ),
+                        React.createElement('small', null, bi('ChatGPT uses a temporary-chat URL. Gemini tries a temporary-chat button and falls back to normal fresh chat if unavailable.', 'ChatGPT는 임시 채팅 URL을 사용합니다. Gemini는 임시 채팅 버튼을 먼저 시도하고 없으면 일반 새 채팅으로 돌아갑니다.'))
                     ),
                     React.createElement('div', { className: 'ai-addon-setting' },
                         React.createElement('div', { style: { display: 'flex', gap: '8px', flexWrap: 'wrap' } },

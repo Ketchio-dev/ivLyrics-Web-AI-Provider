@@ -27,6 +27,15 @@ function normalizeTaskType(taskType) {
     return normalized === 'phonetic' ? 'phonetic' : 'translation';
 }
 
+function normalizeBoolean(value, defaultValue = false) {
+    if (value === undefined || value === null || value === '') return defaultValue;
+    if (typeof value === 'boolean') return value;
+    const normalized = String(value).trim().toLowerCase();
+    if (['1', 'true', 'yes', 'on'].includes(normalized)) return true;
+    if (['0', 'false', 'no', 'off'].includes(normalized)) return false;
+    return defaultValue;
+}
+
 function getRuntimeKey(providerId, taskType = 'translation') {
     return `${providerId}:${normalizeTaskType(taskType)}`;
 }
@@ -38,6 +47,7 @@ const BASE_PROVIDERS = Object.freeze({
         appUrl: 'https://chatgpt.com/',
         loginUrl: 'https://chatgpt.com/',
         newChatUrl: 'https://chatgpt.com/',
+        temporaryChatUrl: 'https://chatgpt.com/?temporary-chat=true',
         composerSelectors: [
             '#prompt-textarea',
             'textarea',
@@ -85,6 +95,12 @@ const BASE_PROVIDERS = Object.freeze({
         appUrl: 'https://gemini.google.com/app',
         loginUrl: 'https://gemini.google.com/app',
         newChatUrl: 'https://gemini.google.com/app',
+        temporaryChatSelectors: [
+            'button[aria-label*="Temporary chat"]',
+            'button[aria-label*="임시 채팅"]',
+            'button:has-text("Temporary chat")',
+            'button:has-text("임시 채팅")',
+        ],
         composerSelectors: [
             'rich-textarea div[contenteditable="true"]',
             'textarea',
@@ -314,7 +330,6 @@ async function captureFailureArtifacts(page, providerId, suffix) {
 
 async function navigateReadyPage(page, url) {
     await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
-    await page.waitForTimeout(1500);
 }
 
 async function attachRuntimeGuards(runtime, provider, allowExternalAuth = false) {
@@ -388,6 +403,21 @@ async function clickFirstVisible(page, selectors, timeoutMs = 5000) {
         }
         await page.waitForTimeout(200);
     }
+    return false;
+}
+
+async function activateTemporaryChat(page, provider) {
+    if (provider.temporaryChatUrl) {
+        if (page.url() !== provider.temporaryChatUrl) {
+            await navigateReadyPage(page, provider.temporaryChatUrl);
+        }
+        return true;
+    }
+
+    if (await clickFirstVisible(page, provider.temporaryChatSelectors || [], 4000)) {
+        return true;
+    }
+
     return false;
 }
 
@@ -538,9 +568,8 @@ async function ensureServiceRuntime(providerId, taskType = 'translation') {
     const provider = getProvider(providerId);
     const runtimeKey = getRuntimeKey(providerId, taskType);
     const existing = providerRuntimes.get(runtimeKey);
-    if (existing && !existing.page.isClosed()) {
-        existing.lastUsedAt = new Date().toISOString();
-        return existing;
+    if (existing) {
+        await closeRuntime(runtimeKey);
     }
 
     const storageStatePath = getProviderStatePath(providerId);
@@ -665,14 +694,26 @@ async function cancelAuth(providerId) {
     return true;
 }
 
-async function prepareRuntimeForPrompt(runtime, provider) {
+async function prepareRuntimeForPrompt(runtime, provider, options = {}) {
     const page = await replaceRuntimePage(runtime);
-    const entryUrl = provider.newChatUrl || provider.appUrl;
+    const useTemporaryChat = normalizeBoolean(options.useTemporaryChat, false);
+    const entryUrl = useTemporaryChat && provider.temporaryChatUrl
+        ? provider.temporaryChatUrl
+        : (provider.newChatUrl || provider.appUrl);
 
     await navigateReadyPage(page, entryUrl);
     await closeKnownPopups(page, provider);
-    await clickFirstVisible(page, provider.newChatSelectors || [], 4000);
-    await page.waitForTimeout(800);
+
+    let temporaryChatActivated = false;
+    if (useTemporaryChat) {
+        temporaryChatActivated = await activateTemporaryChat(page, provider).catch(() => false);
+        await closeKnownPopups(page, provider);
+    }
+
+    if (!temporaryChatActivated) {
+        await clickFirstVisible(page, provider.newChatSelectors || [], 4000);
+    }
+
     await closeKnownPopups(page, provider);
 
     const blocker = await detectBlockers(page, provider);
@@ -683,7 +724,7 @@ async function prepareRuntimeForPrompt(runtime, provider) {
     return page;
 }
 
-async function generateWithProvider(providerId, prompt, taskType = 'translation') {
+async function generateWithProvider(providerId, prompt, taskType = 'translation', options = {}) {
     const normalizedTaskType = normalizeTaskType(taskType);
     const runtimeKey = getRuntimeKey(providerId, normalizedTaskType);
     return await withProviderLock(runtimeKey, async () => {
@@ -697,10 +738,9 @@ async function generateWithProvider(providerId, prompt, taskType = 'translation'
         runtime.lastArtifact = '';
 
         try {
-            const page = await prepareRuntimeForPrompt(runtime, provider);
+            const page = await prepareRuntimeForPrompt(runtime, provider, options);
             const composer = await waitForVisibleLocator(page, provider.composerSelectors, 20000);
             await fillComposer(page, composer, prompt);
-            await page.waitForTimeout(200);
             await clickSubmit(page, provider);
             const text = await waitForAssistantResponse(page, provider);
             await runtime.context.storageState({ path: getProviderStatePath(providerId) });
@@ -727,12 +767,13 @@ async function generateWithProvider(providerId, prompt, taskType = 'translation'
                 const currentUrl = runtime.page && !runtime.page.isClosed() ? runtime.page.url() : provider.appUrl;
                 await openRecoveryWindow(providerId, currentUrl).catch(() => {});
             }
-            await closeRuntime(runtime.key);
             const recoveryMessage = OPEN_ERROR_WINDOW
                 ? ' Recovery window opened.'
                 : '';
             const artifactMessage = runtime.lastArtifact ? ` Screenshot: ${runtime.lastArtifact}` : '';
             throw new Error(`${error.message}.${recoveryMessage}${artifactMessage}`);
+        } finally {
+            await closeRuntime(runtime.key);
         }
     });
 }
@@ -873,16 +914,18 @@ app.post('/generate', async (req, res) => {
     const providerId = String(req.body?.provider || '').trim().toLowerCase();
     const prompt = String(req.body?.prompt || '').trim();
     const taskType = normalizeTaskType(req.body?.taskType || 'translation');
+    const useTemporaryChat = normalizeBoolean(req.body?.useTemporaryChat, false);
     if (!providerId || !prompt) {
         return res.status(400).json({ error: 'Missing provider or prompt' });
     }
 
     try {
-        const text = await generateWithProvider(providerId, prompt, taskType);
+        const text = await generateWithProvider(providerId, prompt, taskType, { useTemporaryChat });
         return res.json({
             success: true,
             provider: providerId,
             taskType,
+            useTemporaryChat,
             text,
         });
     } catch (error) {

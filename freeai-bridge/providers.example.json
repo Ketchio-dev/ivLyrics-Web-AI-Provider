@@ -3,6 +3,7 @@
     "appUrl": "https://chatgpt.com/",
     "loginUrl": "https://chatgpt.com/",
     "newChatUrl": "https://chatgpt.com/",
+    "temporaryChatUrl": "https://chatgpt.com/?temporary-chat=true",
     "composerSelectors": [
       "#prompt-textarea",
       "textarea",
@@ -32,6 +33,12 @@
     "appUrl": "https://gemini.google.com/app",
     "loginUrl": "https://gemini.google.com/app",
     "newChatUrl": "https://gemini.google.com/app",
+    "temporaryChatSelectors": [
+      "button[aria-label*='Temporary chat']",
+      "button[aria-label*='임시 채팅']",
+      "button:has-text('Temporary chat')",
+      "button:has-text('임시 채팅')"
+    ],
     "composerSelectors": [
       "rich-textarea div[contenteditable='true']",
       "textarea",
