@@ -11,7 +11,7 @@
 
     const ADDON_INFO = {
         id: 'freeaiprovider',
-        name: 'Web AI Provider (ChatGPT + Gemini)',
+        name: 'Web AI Provider / 웹 AI 제공자 (ChatGPT + Gemini)',
         author: 'Ketchio-dev',
         description: {
             ko: 'ChatGPT와 Gemini 웹 로그인을 로컬 브리지로 자동화해 번역/발음을 제공합니다.',
@@ -70,6 +70,10 @@
     function getLocalizedText(textObj, lang) {
         if (typeof textObj === 'string') return textObj;
         return textObj?.[lang] || textObj?.en || Object.values(textObj || {})[0] || '';
+    }
+
+    function bi(en, ko) {
+        return `${en} / ${ko}`;
     }
 
     function getSetting(key, defaultValue = null) {
@@ -195,7 +199,7 @@ ${text}`;
                 const [bridgeUrl, setBridgeUrl] = useState(getBridgeUrl());
                 const [provider, setProvider] = useState(getSelectedProvider());
                 const [availableProviders, setAvailableProviders] = useState(PROVIDER_FALLBACKS);
-                const [status, setStatus] = useState('Checking local bridge...');
+                const [status, setStatus] = useState(bi('Checking local bridge...', '로컬 브리지 확인 중...'));
                 const [authStatus, setAuthStatus] = useState('');
                 const [testStatus, setTestStatus] = useState('');
                 const [loadingProviders, setLoadingProviders] = useState(false);
@@ -218,13 +222,21 @@ ${text}`;
                         const providerState = data.providers?.[provider];
                         if (providerState) {
                             setStatus(
-                                `Running. Session saved: ${providerState.hasSavedSession ? 'yes' : 'no'} / Login window: ${providerState.authWindowOpen ? 'open' : 'closed'}`
+                                bi(
+                                    `Running. Session saved: ${providerState.hasSavedSession ? 'yes' : 'no'} / Login window: ${providerState.authWindowOpen ? 'open' : 'closed'}`,
+                                    `실행 중. 세션 저장: ${providerState.hasSavedSession ? '예' : '아니오'} / 로그인 창: ${providerState.authWindowOpen ? '열림' : '닫힘'}`
+                                )
                             );
                         } else {
-                            setStatus('Bridge is running.');
+                            setStatus(bi('Bridge is running.', '브리지가 실행 중입니다.'));
                         }
                     } catch {
-                        setStatus(`Bridge not running at ${bridgeUrl}. Marketplace install only adds the addon. You still need to install and start freeai-bridge.`);
+                        setStatus(
+                            bi(
+                                `Bridge not running at ${bridgeUrl}. Marketplace install only adds the addon. You still need to install and start freeai-bridge.`,
+                                `${bridgeUrl}에서 브리지를 찾을 수 없습니다. 마켓플레이스 설치는 애드온만 추가합니다. freeai-bridge를 별도로 설치하고 실행해야 합니다.`
+                            )
+                        );
                     }
                 }, [bridgeUrl, provider]);
 
@@ -246,48 +258,53 @@ ${text}`;
                 };
 
                 const handleOpenLogin = async () => {
-                    setAuthStatus('Opening login window...');
+                    setAuthStatus(bi('Opening login window...', '로그인 창 여는 중...'));
                     try {
                         await requestBridge('/auth/open', { provider });
-                        setAuthStatus('Login window opened. Finish login in the browser, then click Save Session.');
+                        setAuthStatus(
+                            bi(
+                                'Login window opened. Finish login in the browser, then click Save Session.',
+                                '로그인 창이 열렸습니다. 브라우저에서 로그인한 뒤 Save Session을 누르세요.'
+                            )
+                        );
                     } catch (error) {
-                        setAuthStatus(`Failed: ${error.message}`);
+                        setAuthStatus(bi(`Failed: ${error.message}`, `실패: ${error.message}`));
                     } finally {
                         refreshHealth().catch(() => {});
                     }
                 };
 
                 const handleSaveSession = async () => {
-                    setAuthStatus('Saving session...');
+                    setAuthStatus(bi('Saving session...', '세션 저장 중...'));
                     try {
                         await requestBridge('/auth/complete', { provider });
-                        setAuthStatus('Session saved.');
+                        setAuthStatus(bi('Session saved.', '세션이 저장되었습니다.'));
                     } catch (error) {
-                        setAuthStatus(`Failed: ${error.message}`);
+                        setAuthStatus(bi(`Failed: ${error.message}`, `실패: ${error.message}`));
                     } finally {
                         refreshHealth().catch(() => {});
                     }
                 };
 
                 const handleCancelLogin = async () => {
-                    setAuthStatus('Closing login window...');
+                    setAuthStatus(bi('Closing login window...', '로그인 창 닫는 중...'));
                     try {
                         await requestBridge('/auth/cancel', { provider });
-                        setAuthStatus('Login window closed.');
+                        setAuthStatus(bi('Login window closed.', '로그인 창을 닫았습니다.'));
                     } catch (error) {
-                        setAuthStatus(`Failed: ${error.message}`);
+                        setAuthStatus(bi(`Failed: ${error.message}`, `실패: ${error.message}`));
                     } finally {
                         refreshHealth().catch(() => {});
                     }
                 };
 
                 const handleTest = async () => {
-                    setTestStatus('Testing...');
+                    setTestStatus(bi('Testing...', '테스트 중...'));
                     try {
                         const result = await generate('Reply with OK only.');
-                        setTestStatus(result ? `OK: ${result}` : 'Empty response');
+                        setTestStatus(result ? bi(`OK: ${result}`, `정상: ${result}`) : bi('Empty response', '응답이 비어 있습니다.'));
                     } catch (error) {
-                        setTestStatus(`Failed: ${error.message}`);
+                        setTestStatus(bi(`Failed: ${error.message}`, `실패: ${error.message}`));
                     }
                 };
 
@@ -303,25 +320,25 @@ ${text}`;
                             lineHeight: '1.5'
                         }
                     },
-                        React.createElement('strong', null, 'Before use:'),
-                        React.createElement('div', { style: { marginTop: '6px' } }, '1. Install and start freeai-bridge'),
-                        React.createElement('div', null, '2. Choose ChatGPT or Gemini below'),
-                        React.createElement('div', null, '3. Click Open Login Window and sign in'),
-                        React.createElement('div', null, '4. Click Save Session'),
-                        React.createElement('div', { style: { marginTop: '8px', opacity: 0.8 } }, 'Marketplace install downloads only the addon file. The local bridge is still required.')
+                        React.createElement('strong', null, bi('Before use:', '사용 전에 확인:')),
+                        React.createElement('div', { style: { marginTop: '6px' } }, bi('1. Install and start freeai-bridge', '1. freeai-bridge를 설치하고 실행하세요')),
+                        React.createElement('div', null, bi('2. Choose ChatGPT or Gemini below', '2. 아래에서 ChatGPT 또는 Gemini를 선택하세요')),
+                        React.createElement('div', null, bi('3. Click Open Login Window and sign in', '3. Open Login Window를 눌러 로그인하세요')),
+                        React.createElement('div', null, bi('4. Click Save Session', '4. Save Session을 누르세요')),
+                        React.createElement('div', { style: { marginTop: '8px', opacity: 0.8 } }, bi('Marketplace install downloads only the addon file. The local bridge is still required.', '마켓플레이스 설치는 애드온 파일만 내려받습니다. 로컬 브리지는 별도로 필요합니다.'))
                     ),
                     React.createElement('div', { className: 'ai-addon-setting' },
-                        React.createElement('label', null, 'Bridge URL'),
+                        React.createElement('label', null, bi('Bridge URL', '브리지 URL')),
                         React.createElement('input', {
                             type: 'text',
                             value: bridgeUrl,
                             onChange: handleBridgeUrlChange,
                             placeholder: DEFAULT_BRIDGE_URL,
                         }),
-                        React.createElement('small', null, 'Run the local bridge server first. Default: http://127.0.0.1:19333')
+                        React.createElement('small', null, bi('Run the local bridge server first. Default: http://127.0.0.1:19333', '먼저 로컬 브리지 서버를 실행하세요. 기본값: http://127.0.0.1:19333'))
                     ),
                     React.createElement('div', { className: 'ai-addon-setting' },
-                        React.createElement('label', null, 'Provider'),
+                        React.createElement('label', null, bi('Provider', '제공자')),
                         React.createElement('div', { className: 'ai-addon-input-group' },
                             React.createElement('select', {
                                 value: provider,
@@ -336,7 +353,7 @@ ${text}`;
                             React.createElement('button', {
                                 className: 'ai-addon-btn-secondary',
                                 onClick: refreshProviders,
-                            }, loadingProviders ? '...' : 'Refresh')
+                            }, loadingProviders ? '...' : bi('Refresh', '새로고침'))
                         ),
                         React.createElement('small', null, status)
                     ),
@@ -345,15 +362,15 @@ ${text}`;
                             React.createElement('button', {
                                 className: 'ai-addon-btn-primary',
                                 onClick: handleOpenLogin,
-                            }, 'Open Login Window'),
+                            }, bi('Open Login Window', '로그인 창 열기')),
                             React.createElement('button', {
                                 className: 'ai-addon-btn-secondary',
                                 onClick: handleSaveSession,
-                            }, 'Save Session'),
+                            }, bi('Save Session', '세션 저장')),
                             React.createElement('button', {
                                 className: 'ai-addon-btn-secondary',
                                 onClick: handleCancelLogin,
-                            }, 'Cancel Login')
+                            }, bi('Cancel Login', '로그인 취소'))
                         ),
                         authStatus && React.createElement('small', null, authStatus)
                     ),
@@ -361,11 +378,11 @@ ${text}`;
                         React.createElement('button', {
                             className: 'ai-addon-btn-primary',
                             onClick: handleTest,
-                        }, 'Test Bridge'),
+                        }, bi('Test Bridge', '브리지 테스트')),
                         testStatus && React.createElement('small', null, testStatus)
                     ),
                     React.createElement('div', { className: 'ai-addon-setting' },
-                        React.createElement('small', null, 'This addon is experimental. Web UI changes, captcha, or session expiry can break it at any time.')
+                        React.createElement('small', null, bi('This addon is experimental. Web UI changes, captcha, or session expiry can break it at any time.', '이 애드온은 실험적입니다. 웹 UI 변경, 캡차, 세션 만료로 언제든지 동작이 깨질 수 있습니다.'))
                     )
                 );
             };
