@@ -196,6 +196,14 @@ ${text}`;
             const { useState, useEffect, useCallback } = React;
 
             return function FreeAIproviderSettings() {
+                const isWindows = /win/i.test(navigator.platform || '');
+                const repoUrl = 'https://github.com/Ketchio-dev/ivLyrics-Web-AI-Provider';
+                const setupCommand = isWindows
+                    ? 'git clone https://github.com/Ketchio-dev/ivLyrics-Web-AI-Provider && cd ivLyrics-Web-AI-Provider/freeai-bridge && npm install && npx playwright install chromium'
+                    : 'git clone https://github.com/Ketchio-dev/ivLyrics-Web-AI-Provider && cd ivLyrics-Web-AI-Provider/freeai-bridge && npm install && npx playwright install chromium';
+                const startCommand = isWindows
+                    ? 'cd ivLyrics-Web-AI-Provider/freeai-bridge && npm run start:bg'
+                    : 'cd ivLyrics-Web-AI-Provider/freeai-bridge && npm run start:bg';
                 const [bridgeUrl, setBridgeUrl] = useState(getBridgeUrl());
                 const [provider, setProvider] = useState(getSelectedProvider());
                 const [availableProviders, setAvailableProviders] = useState(PROVIDER_FALLBACKS);
@@ -308,6 +316,28 @@ ${text}`;
                     }
                 };
 
+                const handleCopy = async (text) => {
+                    try {
+                        await navigator.clipboard.writeText(text);
+                        Spicetify.showNotification?.(bi('Copied', '복사됨'));
+                    } catch {
+                        Spicetify.showNotification?.(bi('Copy failed', '복사 실패'));
+                    }
+                };
+
+                const commandBoxStyle = {
+                    fontSize: '11px',
+                    padding: '6px 10px',
+                    backgroundColor: 'rgba(0, 0, 0, 0.3)',
+                    borderRadius: '4px',
+                    flex: '1',
+                    minWidth: '220px',
+                    userSelect: 'all',
+                    cursor: 'text',
+                    whiteSpace: 'normal',
+                    wordBreak: 'break-all'
+                };
+
                 return React.createElement('div', { className: 'ai-addon-settings freeai-settings' },
                     React.createElement('div', {
                         className: 'ai-addon-notice',
@@ -321,10 +351,39 @@ ${text}`;
                         }
                     },
                         React.createElement('strong', null, bi('Before use:', '사용 전에 확인:')),
-                        React.createElement('div', { style: { marginTop: '6px' } }, bi('1. Install and start freeai-bridge', '1. freeai-bridge를 설치하고 실행하세요')),
-                        React.createElement('div', null, bi('2. Choose ChatGPT or Gemini below', '2. 아래에서 ChatGPT 또는 Gemini를 선택하세요')),
-                        React.createElement('div', null, bi('3. Click Open Login Window and sign in', '3. Open Login Window를 눌러 로그인하세요')),
-                        React.createElement('div', null, bi('4. Click Save Session', '4. Save Session을 누르세요')),
+                        React.createElement('div', { style: { marginTop: '6px' } }, bi('1. Install freeai-bridge with this command:', '1. 아래 명령으로 freeai-bridge를 설치하세요:')),
+                        React.createElement('div', {
+                            style: { display: 'flex', alignItems: 'center', gap: '8px', marginTop: '6px', flexWrap: 'wrap' }
+                        },
+                            React.createElement('code', { style: commandBoxStyle }, setupCommand),
+                            React.createElement('button', {
+                                className: 'ai-addon-btn-secondary',
+                                onClick: () => handleCopy(setupCommand)
+                            }, bi('Copy', '복사'))
+                        ),
+                        React.createElement('div', { style: { marginTop: '8px' } }, bi('2. Start the bridge with this command:', '2. 아래 명령으로 브리지를 실행하세요:')),
+                        React.createElement('div', {
+                            style: { display: 'flex', alignItems: 'center', gap: '8px', marginTop: '6px', flexWrap: 'wrap' }
+                        },
+                            React.createElement('code', { style: commandBoxStyle }, startCommand),
+                            React.createElement('button', {
+                                className: 'ai-addon-btn-secondary',
+                                onClick: () => handleCopy(startCommand)
+                            }, bi('Copy', '복사'))
+                        ),
+                        React.createElement('div', { style: { marginTop: '8px' } }, bi('3. Choose ChatGPT or Gemini below', '3. 아래에서 ChatGPT 또는 Gemini를 선택하세요')),
+                        React.createElement('div', null, bi('4. Click Open Login Window and sign in', '4. Open Login Window를 눌러 로그인하세요')),
+                        React.createElement('div', null, bi('5. Click Save Session', '5. Save Session을 누르세요')),
+                        React.createElement('div', { style: { marginTop: '8px' } }, bi('Repository:', '저장소:')),
+                        React.createElement('div', {
+                            style: { display: 'flex', alignItems: 'center', gap: '8px', marginTop: '6px', flexWrap: 'wrap' }
+                        },
+                            React.createElement('code', { style: commandBoxStyle }, repoUrl),
+                            React.createElement('button', {
+                                className: 'ai-addon-btn-secondary',
+                                onClick: () => handleCopy(repoUrl)
+                            }, bi('Copy', '복사'))
+                        ),
                         React.createElement('div', { style: { marginTop: '8px', opacity: 0.8 } }, bi('Marketplace install downloads only the addon file. The local bridge is still required.', '마켓플레이스 설치는 애드온 파일만 내려받습니다. 로컬 브리지는 별도로 필요합니다.'))
                     ),
                     React.createElement('div', { className: 'ai-addon-setting' },
