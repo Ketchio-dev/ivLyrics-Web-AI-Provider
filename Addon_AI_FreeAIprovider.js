@@ -9,6 +9,12 @@
 (() => {
     'use strict';
 
+    if (typeof window === 'undefined') {
+        return;
+    }
+
+    const MAX_REGISTER_RETRIES = 100;
+
     const ADDON_INFO = {
         id: 'freeaiprovider',
         name: 'Web AI Provider / 웹 AI 제공자 (ChatGPT + Gemini)',
@@ -90,6 +96,23 @@
 
     function getSelectedProvider() {
         return String(getSetting('provider', 'chatgpt') || 'chatgpt').trim().toLowerCase();
+    }
+
+    function ensureProviderEnabledByDefault() {
+        const manager = window.AIAddonManager;
+        const storage = Spicetify?.LocalStorage;
+        if (!manager || !storage) return;
+
+        const enabledKey = `ivLyrics:ai:enabled:${ADDON_INFO.id}`;
+        const translateCapabilityKey = `ivLyrics:ai:addon:${ADDON_INFO.id}:capability:translate`;
+
+        if (storage.get(enabledKey) == null && typeof manager.setProviderEnabled === 'function') {
+            manager.setProviderEnabled(ADDON_INFO.id, true);
+        }
+
+        if (storage.get(translateCapabilityKey) == null && typeof manager.setCapabilityEnabled === 'function') {
+            manager.setCapabilityEnabled(ADDON_INFO.id, 'translate', true);
+        }
     }
 
     function getLangInfo(lang) {
@@ -179,9 +202,9 @@ ${text}`;
         }
     }
 
-    async function generate(prompt) {
+    async function generate(prompt, taskType = 'translation') {
         const provider = getSelectedProvider();
-        const data = await requestBridge('/generate', { provider, prompt });
+        const data = await requestBridge('/generate', { provider, prompt, taskType });
         if (!data.text) {
             throw new Error('Empty response from bridge');
         }
@@ -190,6 +213,10 @@ ${text}`;
 
     const FreeAIproviderAddon = {
         ...ADDON_INFO,
+
+        async init() {
+            ensureProviderEnabledByDefault();
+        },
 
         getSettingsUI() {
             const React = Spicetify.React;
@@ -229,10 +256,14 @@ ${text}`;
                         const data = await response.json();
                         const providerState = data.providers?.[provider];
                         if (providerState) {
+                            const runtimeMode = providerState.runtimeMode || (data.serviceHeadless ? 'headless' : 'headed');
+                            const blockedSuffix = providerState.blockedBy
+                                ? bi(` / Blocked: ${providerState.blockedBy}`, ` / 차단 상태: ${providerState.blockedBy}`)
+                                : '';
                             setStatus(
                                 bi(
-                                    `Running. Session saved: ${providerState.hasSavedSession ? 'yes' : 'no'} / Login window: ${providerState.authWindowOpen ? 'open' : 'closed'}`,
-                                    `실행 중. 세션 저장: ${providerState.hasSavedSession ? '예' : '아니오'} / 로그인 창: ${providerState.authWindowOpen ? '열림' : '닫힘'}`
+                                    `Running. Session saved: ${providerState.hasSavedSession ? 'yes' : 'no'} / Login window: ${providerState.authWindowOpen ? 'open' : 'closed'} / Recovery window: ${providerState.recoveryWindowOpen ? 'open' : 'closed'} / Mode: ${runtimeMode}${blockedSuffix}`,
+                                    `실행 중. 세션 저장: ${providerState.hasSavedSession ? '예' : '아니오'} / 로그인 창: ${providerState.authWindowOpen ? '열림' : '닫힘'} / 복구 창: ${providerState.recoveryWindowOpen ? '열림' : '닫힘'} / 모드: ${runtimeMode}${blockedSuffix}`
                                 )
                             );
                         } else {
@@ -306,10 +337,22 @@ ${text}`;
                     }
                 };
 
+                const handleCloseRecovery = async () => {
+                    setAuthStatus(bi('Closing recovery window...', '복구 창 닫는 중...'));
+                    try {
+                        await requestBridge('/recovery/cancel', { provider });
+                        setAuthStatus(bi('Recovery window closed.', '복구 창을 닫았습니다.'));
+                    } catch (error) {
+                        setAuthStatus(bi(`Failed: ${error.message}`, `실패: ${error.message}`));
+                    } finally {
+                        refreshHealth().catch(() => {});
+                    }
+                };
+
                 const handleTest = async () => {
                     setTestStatus(bi('Testing...', '테스트 중...'));
                     try {
-                        const result = await generate('Reply with OK only.');
+                        const result = await generate('Reply with OK only.', 'translation');
                         setTestStatus(result ? bi(`OK: ${result}`, `정상: ${result}`) : bi('Empty response', '응답이 비어 있습니다.'));
                     } catch (error) {
                         setTestStatus(bi(`Failed: ${error.message}`, `실패: ${error.message}`));
@@ -429,7 +472,11 @@ ${text}`;
                             React.createElement('button', {
                                 className: 'ai-addon-btn-secondary',
                                 onClick: handleCancelLogin,
-                            }, bi('Cancel Login', '로그인 취소'))
+                            }, bi('Cancel Login', '로그인 취소')),
+                            React.createElement('button', {
+                                className: 'ai-addon-btn-secondary',
+                                onClick: handleCloseRecovery,
+                            }, bi('Close Recovery Window', '복구 창 닫기'))
                         ),
                         authStatus && React.createElement('small', null, authStatus)
                     ),
@@ -453,10 +500,11 @@ ${text}`;
             }
 
             const expectedLineCount = text.split('\n').length;
+            const taskType = wantSmartPhonetic ? 'phonetic' : 'translation';
             const prompt = wantSmartPhonetic
                 ? buildPhoneticPrompt(text, lang)
                 : buildTranslationPrompt(text, lang);
-            const rawResponse = await generate(prompt);
+            const rawResponse = await generate(prompt, taskType);
             const lines = parseTextLines(rawResponse, expectedLineCount);
 
             if (wantSmartPhonetic) {
@@ -466,11 +514,19 @@ ${text}`;
         },
     };
 
+    let registerAttempts = 0;
     const registerAddon = () => {
-        if (window.AIAddonManager) {
-            window.AIAddonManager.register(FreeAIproviderAddon);
-        } else {
+        if (window.AIAddonManager && typeof window.AIAddonManager.register === 'function') {
+            try {
+                window.AIAddonManager.register(FreeAIproviderAddon);
+                ensureProviderEnabledByDefault();
+            } catch (error) {
+                console.error('[Web AI Provider] Failed to register addon:', error?.message || error);
+            }
+        } else if (++registerAttempts < MAX_REGISTER_RETRIES) {
             setTimeout(registerAddon, 100);
+        } else {
+            console.error('[Web AI Provider] AIAddonManager not found after max retries');
         }
     };
 

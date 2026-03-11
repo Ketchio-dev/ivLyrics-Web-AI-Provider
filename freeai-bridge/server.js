@@ -7,6 +7,8 @@ const { chromium } = require('playwright');
 
 const PORT = Number(process.env.PORT || 19333);
 const SERVICE_HEADLESS = process.env.FREEAI_SERVICE_HEADLESS === '1';
+const SERVICE_START_MINIMIZED = process.env.FREEAI_SERVICE_START_MINIMIZED !== '0';
+const OPEN_ERROR_WINDOW = process.env.FREEAI_OPEN_ERROR_WINDOW !== '0';
 const BROWSER_CHANNEL = process.env.FREEAI_BROWSER_CHANNEL || '';
 const RESPONSE_TIMEOUT_MS = Number(process.env.FREEAI_RESPONSE_TIMEOUT_MS || 120000);
 const ROOT_DIR = __dirname;
@@ -15,8 +17,19 @@ const OVERRIDE_PATH = path.join(ROOT_DIR, 'providers.local.json');
 const ARTIFACTS_DIR = path.join(ROOT_DIR, '..', 'output', 'playwright');
 const DEFAULT_VIEWPORT = { width: 1440, height: 960 };
 const authSessions = new Map();
+const recoveryWindows = new Map();
 const providerRuntimes = new Map();
 const providerLocks = new Map();
+const providerStatus = new Map();
+
+function normalizeTaskType(taskType) {
+    const normalized = String(taskType || 'translation').trim().toLowerCase();
+    return normalized === 'phonetic' ? 'phonetic' : 'translation';
+}
+
+function getRuntimeKey(providerId, taskType = 'translation') {
+    return `${providerId}:${normalizeTaskType(taskType)}`;
+}
 
 const BASE_PROVIDERS = Object.freeze({
     chatgpt: {
@@ -24,6 +37,7 @@ const BASE_PROVIDERS = Object.freeze({
         name: 'ChatGPT',
         appUrl: 'https://chatgpt.com/',
         loginUrl: 'https://chatgpt.com/',
+        newChatUrl: 'https://chatgpt.com/',
         composerSelectors: [
             '#prompt-textarea',
             'textarea',
@@ -38,6 +52,15 @@ const BASE_PROVIDERS = Object.freeze({
         responseSelectors: [
             '[data-message-author-role="assistant"]',
             'article [data-message-author-role="assistant"]',
+        ],
+        newChatSelectors: [
+            'button[data-testid="new-chat-button"]',
+            'a[aria-label*="New chat"]',
+            'button[aria-label*="New chat"]',
+        ],
+        loadingSelectors: [
+            'button[data-testid="stop-button"]',
+            'button[aria-label*="Stop"]',
         ],
         closePopupSelectors: [
             'button[aria-label*="Close"]',
@@ -61,6 +84,7 @@ const BASE_PROVIDERS = Object.freeze({
         name: 'Gemini',
         appUrl: 'https://gemini.google.com/app',
         loginUrl: 'https://gemini.google.com/app',
+        newChatUrl: 'https://gemini.google.com/app',
         composerSelectors: [
             'rich-textarea div[contenteditable="true"]',
             'textarea',
@@ -76,6 +100,18 @@ const BASE_PROVIDERS = Object.freeze({
             'model-response',
             'message-content',
             '.response-container',
+        ],
+        newChatSelectors: [
+            'button[aria-label*="New chat"]',
+            'button[aria-label*="새 채팅"]',
+            'button:has-text("New chat")',
+            'button:has-text("새 채팅")',
+        ],
+        loadingSelectors: [
+            'button[aria-label*="Stop"]',
+            'button[aria-label*="중지"]',
+            'button:has-text("Stop")',
+            'button:has-text("중지")',
         ],
         closePopupSelectors: [
             'button[aria-label*="Close"]',
@@ -139,16 +175,21 @@ function getProvider(providerId) {
     return provider;
 }
 
-function buildLaunchOptions(headless) {
+function buildLaunchOptions(headless, backgroundMode = false) {
+    const args = ['--disable-blink-features=AutomationControlled'];
+    if (!headless && backgroundMode && SERVICE_START_MINIMIZED) {
+        args.push('--start-minimized');
+    }
+
     return {
         headless,
         channel: BROWSER_CHANNEL || undefined,
-        args: ['--disable-blink-features=AutomationControlled'],
+        args,
     };
 }
 
-async function createContext({ storageStatePath, headless }) {
-    const browser = await chromium.launch(buildLaunchOptions(headless));
+async function createContext({ storageStatePath, headless, backgroundMode = false }) {
+    const browser = await chromium.launch(buildLaunchOptions(headless, backgroundMode));
     const context = await browser.newContext({
         storageState: fs.existsSync(storageStatePath) ? storageStatePath : undefined,
         viewport: DEFAULT_VIEWPORT,
@@ -156,10 +197,10 @@ async function createContext({ storageStatePath, headless }) {
     return { browser, context };
 }
 
-function withProviderLock(providerId, task) {
-    const previous = providerLocks.get(providerId) || Promise.resolve();
+function withProviderLock(lockKey, task) {
+    const previous = providerLocks.get(lockKey) || Promise.resolve();
     const next = previous.catch(() => {}).then(() => task());
-    providerLocks.set(providerId, next.catch(() => {}));
+    providerLocks.set(lockKey, next.catch(() => {}));
     return next;
 }
 
@@ -188,6 +229,30 @@ function isAllowedUrl(url, provider, allowExternalAuth = false) {
     } catch {
         return false;
     }
+}
+
+function getBlockedBy(lastError = '') {
+    const value = String(lastError || '').trim();
+    if (!value) return '';
+    const match = value.match(/Blocked(?: before prompt submission| by UI state)?:\s*([^.\n]+)/i);
+    return match ? match[1].trim() : '';
+}
+
+function getProviderStatus(providerId) {
+    return providerStatus.get(providerId) || {
+        lastPopup: '',
+        lastError: '',
+        lastArtifact: '',
+        blockedBy: '',
+        runtimeMode: '',
+    };
+}
+
+function patchProviderStatus(providerId, patch) {
+    providerStatus.set(providerId, {
+        ...getProviderStatus(providerId),
+        ...patch,
+    });
 }
 
 async function closeKnownPopups(page, provider) {
@@ -290,6 +355,7 @@ async function attachRuntimeGuards(runtime, provider, allowExternalAuth = false)
         } catch {}
     });
 
+    runtime.guardPage = guardPage;
     await guardPage(page);
 }
 
@@ -306,6 +372,35 @@ async function waitForVisibleLocator(page, selectors, timeoutMs = 15000) {
         await page.waitForTimeout(250);
     }
     throw new Error(`No visible locator found for selectors: ${selectors.join(', ')}`);
+}
+
+async function clickFirstVisible(page, selectors, timeoutMs = 5000) {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+        for (const selector of selectors || []) {
+            const locator = page.locator(selector).last();
+            try {
+                if (await locator.isVisible({ timeout: 300 })) {
+                    await locator.click({ timeout: 3000 });
+                    return true;
+                }
+            } catch {}
+        }
+        await page.waitForTimeout(200);
+    }
+    return false;
+}
+
+async function hasVisibleSelector(page, selectors, timeoutMs = 250) {
+    for (const selector of selectors || []) {
+        const locator = page.locator(selector).last();
+        try {
+            if (await locator.isVisible({ timeout: timeoutMs })) {
+                return true;
+            }
+        } catch {}
+    }
+    return false;
 }
 
 async function clearComposer(page, locator) {
@@ -378,7 +473,9 @@ function normalizeAssistantText(providerId, text) {
 async function waitForAssistantResponse(page, provider, timeoutMs = RESPONSE_TIMEOUT_MS) {
     const startedAt = Date.now();
     let latestText = '';
-    let stableTicks = 0;
+    let lastTextChangeAt = 0;
+    const responseSettledMs = Number(provider.responseSettledMs || 3500);
+    const pollIntervalMs = Number(provider.pollIntervalMs || 1000);
 
     while (Date.now() - startedAt < timeoutMs) {
         await closeKnownPopups(page, provider);
@@ -391,33 +488,56 @@ async function waitForAssistantResponse(page, provider, timeoutMs = RESPONSE_TIM
         const nextText = await readLatestAssistantText(page, provider);
         if (nextText && nextText !== latestText) {
             latestText = nextText;
-            stableTicks = 0;
-        } else if (nextText && nextText === latestText) {
-            stableTicks += 1;
-            if (stableTicks >= 3) {
+            lastTextChangeAt = Date.now();
+        }
+
+        if (latestText) {
+            const loading = await hasVisibleSelector(page, provider.loadingSelectors || [], 200);
+            if (!loading && lastTextChangeAt && (Date.now() - lastTextChangeAt) >= responseSettledMs) {
                 return latestText;
             }
         }
 
-        await page.waitForTimeout(1200);
+        await page.waitForTimeout(pollIntervalMs);
     }
 
     if (latestText) return latestText;
     throw new Error('Timed out while waiting for assistant response');
 }
 
-async function closeRuntime(providerId) {
-    const runtime = providerRuntimes.get(providerId);
+async function closeRuntime(runtimeKey) {
+    const runtime = providerRuntimes.get(runtimeKey);
     if (!runtime) return;
-    providerRuntimes.delete(providerId);
+    providerRuntimes.delete(runtimeKey);
     try {
         await runtime.browser.close();
     } catch {}
 }
 
-async function ensureServiceRuntime(providerId) {
+async function replaceRuntimePage(runtime) {
+    if (runtime.page && !runtime.page.isClosed()) {
+        await runtime.page.close().catch(() => {});
+    }
+
+    const nextPage = await runtime.context.newPage();
+    runtime.page = nextPage;
+    if (typeof runtime.guardPage === 'function') {
+        await runtime.guardPage(nextPage);
+    }
+    return nextPage;
+}
+
+async function closeProviderRuntimes(providerId) {
+    const keys = Array.from(providerRuntimes.keys()).filter((key) => key.startsWith(`${providerId}:`));
+    for (const key of keys) {
+        await closeRuntime(key);
+    }
+}
+
+async function ensureServiceRuntime(providerId, taskType = 'translation') {
     const provider = getProvider(providerId);
-    const existing = providerRuntimes.get(providerId);
+    const runtimeKey = getRuntimeKey(providerId, taskType);
+    const existing = providerRuntimes.get(runtimeKey);
     if (existing && !existing.page.isClosed()) {
         existing.lastUsedAt = new Date().toISOString();
         return existing;
@@ -427,10 +547,13 @@ async function ensureServiceRuntime(providerId) {
     const { browser, context } = await createContext({
         storageStatePath,
         headless: SERVICE_HEADLESS,
+        backgroundMode: !SERVICE_HEADLESS,
     });
     const page = await context.newPage();
     const runtime = {
+        key: runtimeKey,
         providerId,
+        taskType: normalizeTaskType(taskType),
         mode: SERVICE_HEADLESS ? 'headless' : 'headed',
         browser,
         context,
@@ -443,7 +566,13 @@ async function ensureServiceRuntime(providerId) {
     };
 
     await attachRuntimeGuards(runtime, provider, false);
-    providerRuntimes.set(providerId, runtime);
+    patchProviderStatus(providerId, {
+        runtimeMode: runtime.mode,
+        lastError: '',
+        lastArtifact: '',
+        blockedBy: '',
+    });
+    providerRuntimes.set(runtimeKey, runtime);
     return runtime;
 }
 
@@ -476,6 +605,42 @@ async function openAuthWindow(providerId) {
     return session;
 }
 
+async function openRecoveryWindow(providerId, targetUrl = '') {
+    if (!OPEN_ERROR_WINDOW) return null;
+    if (recoveryWindows.has(providerId)) {
+        return recoveryWindows.get(providerId);
+    }
+
+    const provider = getProvider(providerId);
+    const storageStatePath = getProviderStatePath(providerId);
+    const { browser, context } = await createContext({
+        storageStatePath,
+        headless: false,
+    });
+    const page = await context.newPage();
+    const session = {
+        providerId,
+        browser,
+        context,
+        page,
+        openedAt: new Date().toISOString(),
+        lastPopup: '',
+    };
+
+    await attachRuntimeGuards(session, provider, true);
+    await navigateReadyPage(page, targetUrl || provider.appUrl);
+    recoveryWindows.set(providerId, session);
+    return session;
+}
+
+async function closeRecoveryWindow(providerId) {
+    const session = recoveryWindows.get(providerId);
+    if (!session) return false;
+    await session.browser.close().catch(() => {});
+    recoveryWindows.delete(providerId);
+    return true;
+}
+
 async function completeAuth(providerId) {
     const session = authSessions.get(providerId);
     if (!session) {
@@ -487,7 +652,8 @@ async function completeAuth(providerId) {
     await session.context.storageState({ path: storageStatePath });
     await session.browser.close();
     authSessions.delete(providerId);
-    await closeRuntime(providerId);
+    await closeRecoveryWindow(providerId);
+    await closeProviderRuntimes(providerId);
     return storageStatePath;
 }
 
@@ -500,58 +666,96 @@ async function cancelAuth(providerId) {
 }
 
 async function prepareRuntimeForPrompt(runtime, provider) {
-    await navigateReadyPage(runtime.page, provider.appUrl);
-    await closeKnownPopups(runtime.page, provider);
-    const blocker = await detectBlockers(runtime.page, provider);
+    const page = await replaceRuntimePage(runtime);
+    const entryUrl = provider.newChatUrl || provider.appUrl;
+
+    await navigateReadyPage(page, entryUrl);
+    await closeKnownPopups(page, provider);
+    await clickFirstVisible(page, provider.newChatSelectors || [], 4000);
+    await page.waitForTimeout(800);
+    await closeKnownPopups(page, provider);
+
+    const blocker = await detectBlockers(page, provider);
     if (blocker) {
         throw new Error(`Blocked before prompt submission: ${blocker}`);
     }
+
+    return page;
 }
 
-async function generateWithProvider(providerId, prompt) {
-    return await withProviderLock(providerId, async () => {
+async function generateWithProvider(providerId, prompt, taskType = 'translation') {
+    const normalizedTaskType = normalizeTaskType(taskType);
+    const runtimeKey = getRuntimeKey(providerId, normalizedTaskType);
+    return await withProviderLock(runtimeKey, async () => {
         ensureDir(STATE_DIR);
         ensureDir(ARTIFACTS_DIR);
 
         const provider = getProvider(providerId);
-        const runtime = await ensureServiceRuntime(providerId);
+        const runtime = await ensureServiceRuntime(providerId, normalizedTaskType);
         runtime.lastUsedAt = new Date().toISOString();
         runtime.lastError = '';
         runtime.lastArtifact = '';
 
         try {
-            await prepareRuntimeForPrompt(runtime, provider);
-            const composer = await waitForVisibleLocator(runtime.page, provider.composerSelectors, 20000);
-            await fillComposer(runtime.page, composer, prompt);
-            await runtime.page.waitForTimeout(200);
-            await clickSubmit(runtime.page, provider);
-            const text = await waitForAssistantResponse(runtime.page, provider);
+            const page = await prepareRuntimeForPrompt(runtime, provider);
+            const composer = await waitForVisibleLocator(page, provider.composerSelectors, 20000);
+            await fillComposer(page, composer, prompt);
+            await page.waitForTimeout(200);
+            await clickSubmit(page, provider);
+            const text = await waitForAssistantResponse(page, provider);
             await runtime.context.storageState({ path: getProviderStatePath(providerId) });
+            await closeRecoveryWindow(providerId);
+            patchProviderStatus(providerId, {
+                lastPopup: runtime.lastPopup || '',
+                lastError: '',
+                lastArtifact: '',
+                blockedBy: '',
+                runtimeMode: runtime.mode,
+            });
             return normalizeAssistantText(providerId, text);
         } catch (error) {
             runtime.lastError = error.message;
             runtime.lastArtifact = await captureFailureArtifacts(runtime.page, providerId, 'failure');
-            await closeRuntime(providerId);
+            patchProviderStatus(providerId, {
+                lastPopup: runtime.lastPopup || '',
+                lastError: runtime.lastError,
+                lastArtifact: runtime.lastArtifact,
+                blockedBy: getBlockedBy(runtime.lastError),
+                runtimeMode: runtime.mode,
+            });
+            if (OPEN_ERROR_WINDOW) {
+                const currentUrl = runtime.page && !runtime.page.isClosed() ? runtime.page.url() : provider.appUrl;
+                await openRecoveryWindow(providerId, currentUrl).catch(() => {});
+            }
+            await closeRuntime(runtime.key);
+            const recoveryMessage = OPEN_ERROR_WINDOW
+                ? ' Recovery window opened.'
+                : '';
             const artifactMessage = runtime.lastArtifact ? ` Screenshot: ${runtime.lastArtifact}` : '';
-            throw new Error(`${error.message}.${artifactMessage}`);
+            throw new Error(`${error.message}.${recoveryMessage}${artifactMessage}`);
         }
     });
 }
 
 function getProviderPayload(providerId) {
     const provider = getProvider(providerId);
-    const runtime = providerRuntimes.get(providerId);
+    const status = getProviderStatus(providerId);
+    const runtimes = Array.from(providerRuntimes.values()).filter((runtime) => runtime.providerId === providerId);
+    const runtime = runtimes[0] || null;
     return {
         id: provider.id,
         name: provider.name,
         appUrl: provider.appUrl,
         hasSavedSession: fs.existsSync(getProviderStatePath(providerId)),
         authWindowOpen: authSessions.has(providerId),
-        runtimeActive: !!runtime,
-        runtimeMode: runtime?.mode || '',
-        lastPopup: runtime?.lastPopup || '',
-        lastError: runtime?.lastError || '',
-        lastArtifact: runtime?.lastArtifact || '',
+        recoveryWindowOpen: recoveryWindows.has(providerId),
+        runtimeActive: runtimes.length > 0,
+        activeRuntimeCount: runtimes.length,
+        runtimeMode: runtime?.mode || status.runtimeMode || '',
+        lastPopup: runtime?.lastPopup || status.lastPopup || '',
+        lastError: runtime?.lastError || status.lastError || '',
+        lastArtifact: runtime?.lastArtifact || status.lastArtifact || '',
+        blockedBy: getBlockedBy(runtime?.lastError || '') || status.blockedBy || '',
     };
 }
 
@@ -559,8 +763,11 @@ async function shutdownAll() {
     for (const providerId of Array.from(authSessions.keys())) {
         await cancelAuth(providerId);
     }
-    for (const providerId of Array.from(providerRuntimes.keys())) {
-        await closeRuntime(providerId);
+    for (const providerId of Array.from(recoveryWindows.keys())) {
+        await closeRecoveryWindow(providerId);
+    }
+    for (const runtimeKey of Array.from(providerRuntimes.keys())) {
+        await closeRuntime(runtimeKey);
     }
 }
 
@@ -578,6 +785,8 @@ app.get('/health', (req, res) => {
         status: 'ok',
         port: PORT,
         serviceHeadless: SERVICE_HEADLESS,
+        serviceStartMinimized: SERVICE_START_MINIMIZED,
+        openErrorWindow: OPEN_ERROR_WINDOW,
         providers,
     });
 });
@@ -642,18 +851,38 @@ app.post('/auth/cancel', async (req, res) => {
     }
 });
 
+app.post('/recovery/cancel', async (req, res) => {
+    const providerId = String(req.body?.provider || '').trim().toLowerCase();
+    if (!providerId) {
+        return res.status(400).json({ error: 'Missing provider' });
+    }
+
+    try {
+        const cancelled = await closeRecoveryWindow(providerId);
+        return res.json({
+            success: true,
+            provider: providerId,
+            cancelled,
+        });
+    } catch (error) {
+        return res.status(500).json({ error: error.message });
+    }
+});
+
 app.post('/generate', async (req, res) => {
     const providerId = String(req.body?.provider || '').trim().toLowerCase();
     const prompt = String(req.body?.prompt || '').trim();
+    const taskType = normalizeTaskType(req.body?.taskType || 'translation');
     if (!providerId || !prompt) {
         return res.status(400).json({ error: 'Missing provider or prompt' });
     }
 
     try {
-        const text = await generateWithProvider(providerId, prompt);
+        const text = await generateWithProvider(providerId, prompt, taskType);
         return res.json({
             success: true,
             provider: providerId,
+            taskType,
             text,
         });
     } catch (error) {
