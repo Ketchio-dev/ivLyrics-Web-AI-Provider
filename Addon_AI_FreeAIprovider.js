@@ -195,7 +195,7 @@ ${text}`;
                 const [bridgeUrl, setBridgeUrl] = useState(getBridgeUrl());
                 const [provider, setProvider] = useState(getSelectedProvider());
                 const [availableProviders, setAvailableProviders] = useState(PROVIDER_FALLBACKS);
-                const [status, setStatus] = useState('Checking bridge...');
+                const [status, setStatus] = useState('Checking local bridge...');
                 const [authStatus, setAuthStatus] = useState('');
                 const [testStatus, setTestStatus] = useState('');
                 const [loadingProviders, setLoadingProviders] = useState(false);
@@ -221,10 +221,10 @@ ${text}`;
                                 `Running. Session saved: ${providerState.hasSavedSession ? 'yes' : 'no'} / Login window: ${providerState.authWindowOpen ? 'open' : 'closed'}`
                             );
                         } else {
-                            setStatus('Running.');
+                            setStatus('Bridge is running.');
                         }
                     } catch {
-                        setStatus(`Bridge not reachable at ${bridgeUrl}`);
+                        setStatus(`Bridge not running at ${bridgeUrl}. Marketplace install only adds the addon. You still need to install and start freeai-bridge.`);
                     }
                 }, [bridgeUrl, provider]);
 
@@ -292,6 +292,24 @@ ${text}`;
                 };
 
                 return React.createElement('div', { className: 'ai-addon-settings freeai-settings' },
+                    React.createElement('div', {
+                        className: 'ai-addon-notice',
+                        style: {
+                            padding: '12px',
+                            marginBottom: '16px',
+                            backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                            borderRadius: '4px',
+                            fontSize: '12px',
+                            lineHeight: '1.5'
+                        }
+                    },
+                        React.createElement('strong', null, 'Before use:'),
+                        React.createElement('div', { style: { marginTop: '6px' } }, '1. Install and start freeai-bridge'),
+                        React.createElement('div', null, '2. Choose ChatGPT or Gemini below'),
+                        React.createElement('div', null, '3. Click Open Login Window and sign in'),
+                        React.createElement('div', null, '4. Click Save Session'),
+                        React.createElement('div', { style: { marginTop: '8px', opacity: 0.8 } }, 'Marketplace install downloads only the addon file. The local bridge is still required.')
+                    ),
                     React.createElement('div', { className: 'ai-addon-setting' },
                         React.createElement('label', null, 'Bridge URL'),
                         React.createElement('input', {
